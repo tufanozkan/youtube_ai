@@ -3,6 +3,9 @@ import sys
 import json
 import argparse
 import hashlib
+import time
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from apify_client import ApifyClient
 from openai import OpenAI
@@ -11,7 +14,10 @@ import tiktoken
 # 1. Çevresel Değişkenleri Yükle
 load_dotenv()
 
-# 2. API Kurulumları
+# 2. Sabitler (URL BURADA TEMİZ HALDE DURUYOR)
+GENIUS_SEARCH_URL = "https://genius.com/api/search/song"
+
+# 3. API Kurulumları
 APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -25,8 +31,8 @@ try:
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_KEY,
         default_headers={
-            "HTTP-Referer": os.getenv("OR_SITE_URL", "https://github.com/cemdilmegani"),
-            "X-Title": os.getenv("OR_APP_NAME", "YouTubeAI"),
+            "HTTP-Referer": "https://github.com/cemdilmegani/youtube-ai",
+            "X-Title": "YouTubeAI",
         }
     )
 except Exception as e:
@@ -49,6 +55,10 @@ def get_artist_from_youtube(video_url):
     try:
         # Apify: Youtube Scraper
         run = apify_client.actor("streamers/youtube-scraper").call(run_input=run_input)
+        
+        if not run:
+            raise ValueError("Actor başlatılamadı.")
+
         dataset_items = apify_client.dataset(run["defaultDatasetId"]).list_items().items
         
         if not dataset_items:
@@ -115,73 +125,83 @@ def get_first_album_songs(artist_name):
         return {"album": "Error", "songs": []}
 
 def get_lyrics(song_list, artist_name):
-    """ Adım 3: Apify Genius Scraper (canadesk) kullanarak şarkı sözlerini çeker. """
-    print(f"[*] {len(song_list)} şarkı için sözler aranıyor (Bu işlem 30-60sn sürebilir)...")
+    """ 
+    Adım 3: Requests ve BeautifulSoup kullanarak Genius.com'dan veri çeker.
+    """
+    print(f"[*] {len(song_list)} şarkı için Genius üzerinden sözler kazınıyor...")
     
-    search_queries = [f"{artist_name} {song} lyrics" for song in song_list]
+    songs_with_lyrics_data = []
+    found_count = 0
     
-    # canadesk/genius-lyrics-scraper parametreleri
-    run_input = {
-        "searchQueries": search_queries,
-        "maxItems": 1
+    # Tarayıcı taklidi (Genius botları engellemesin diye)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
     }
 
-    songs_with_lyrics_data = []
-    
-    try:
-        # GÜNCEL ACTOR: canadesk/genius-lyrics-scraper
-        print("    -> Apify 'canadesk/genius-lyrics-scraper' çağrılıyor...")
-        run = apify_client.actor("canadesk/genius-lyrics-scraper").call(run_input=run_input)
-        
-        dataset_items = []
-        if run:
-            dataset_items = apify_client.dataset(run["defaultDatasetId"]).list_items().items
-        
-        # Eşleştirme Haritası
-        lyrics_map = {}
-        for item in dataset_items:
-            # canadesk çıktısında lyrics genelde 'lyrics' alanındadır
-            lyrics = item.get("lyrics", "")
+    for song in song_list:
+        try:
+            # 1. Genius Arama API'sini kullan (URL sabitten alınıyor)
+            params = {"q": f"{artist_name} {song}", "page": 1}
             
-            # Eşleştirme için title veya searchQuery kullan
-            title = item.get("title", "").lower()
-            query_used = item.get("searchQuery", "").lower()
+            # İstek atılıyor
+            resp = requests.get(GENIUS_SEARCH_URL, params=params, headers=headers, timeout=15)
             
-            if lyrics:
-                if title: lyrics_map[title] = lyrics
-                if query_used: lyrics_map[query_used] = lyrics
+            lyrics_text = ""
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                
+                # Arama sonucu var mı?
+                if data.get("response", {}).get("sections", []) and data["response"]["sections"][0]["hits"]:
+                    hit = data["response"]["sections"][0]["hits"][0]
+                    song_url = hit["result"]["url"]
+                    
+                    # 2. Şarkı sayfasına git
+                    page_resp = requests.get(song_url, headers=headers, timeout=15)
+                    soup = BeautifulSoup(page_resp.text, "html.parser")
+                    
+                    # Lyrics containerlarını bul
+                    lyrics_containers = soup.find_all("div", {"data-lyrics-container": "true"})
+                    
+                    if lyrics_containers:
+                        for container in lyrics_containers:
+                            # <br> -> \n değişimi
+                            for br in container.find_all("br"):
+                                br.replace_with("\n")
+                            lyrics_text += container.get_text(separator="\n")
+            else:
+                print(f"    ! API Hatası: {resp.status_code}")
 
-        found_count = 0
-        for song in song_list:
-            song_lower = song.lower()
-            found_lyrics = ""
-            
-            # Basit eşleştirme
-            for k, v in lyrics_map.items():
-                if song_lower in k:
-                    found_lyrics = v
-                    break
-            
-            if found_lyrics:
+            if lyrics_text:
                 found_count += 1
+                lyrics_text = lyrics_text.strip()
+                print(f"    + {song}: Bulundu ({len(lyrics_text)} karakter)")
+            else:
+                print(f"    - {song}: Bulunamadı")
             
             songs_with_lyrics_data.append({
                 "name": song,
-                "lyrics": found_lyrics
+                "lyrics": lyrics_text
             })
             
-        print(f"    -> {len(song_list)} şarkıdan {found_count} tanesinin sözleri bulundu.")
-        return songs_with_lyrics_data
+            # Kısa mola (Rate limit yememek için)
+            time.sleep(0.5)
 
-    except Exception as e:
-        print(f"!! Genius Scraper Hatası: {str(e)}")
-        # Hata durumunda boş dön
-        return [{"name": s, "lyrics": ""} for s in song_list]
+        except Exception as e:
+            print(f"    - {song}: Hata ({str(e)})")
+            songs_with_lyrics_data.append({"name": song, "lyrics": ""})
+
+    print(f"    -> Toplam {len(song_list)} şarkıdan {found_count} tanesinin sözleri çekildi.")
+    return songs_with_lyrics_data
 
 def analyze_lyrics_and_format(songs_data, artist_name, album_name):
     """ Adım 4 & 5: Tiktoken analizi ve JSON oluşturma. """
     print("[*] Token analizi yapılıyor...")
-    enc = tiktoken.get_encoding("cl100k_base")
+    
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+    except:
+        enc = tiktoken.get_encoding("gpt2")
     
     analyzed_songs = []
     total_tokens_all = 0
@@ -190,7 +210,6 @@ def analyze_lyrics_and_format(songs_data, artist_name, album_name):
         lyrics = item["lyrics"]
         song_name = item["name"]
         
-        # Varsayılan değerler
         char_count = 0
         word_count = 0
         token_count = 0
@@ -201,12 +220,14 @@ def analyze_lyrics_and_format(songs_data, artist_name, album_name):
             char_count = len(lyrics)
             words = lyrics.split()
             word_count = len(words)
-            tokens = enc.encode(lyrics)
-            token_count = len(tokens)
+            try:
+                tokens = enc.encode(lyrics)
+                token_count = len(tokens)
+            except:
+                token_count = 0
+                
             t_per_w = round(token_count / word_count, 2) if word_count > 0 else 0
-            # UTF-8 hash
             lyrics_hash = hashlib.md5(lyrics.encode("utf-8")).hexdigest()
-            
             total_tokens_all += token_count
         
         analyzed_songs.append({
@@ -232,16 +253,24 @@ def generate_hash_from_embeddings(songs_json):
     """ Adım 6, 7 & 8: Embedding ve Final Hash. """
     print("[*] Embedding ve Hash hesaplanıyor...")
     
-    # Token listesi string'i
     token_counts = [str(s["lyrics_length_tokens"]) for s in songs_json["songs"]]
+    
+    if not token_counts or all(x == "0" for x in token_counts):
+        print("!! UYARI: Hiçbir şarkı sözü bulunamadığı için embedding sonucu hatalı olabilir.")
+
     concatenated_tokens = ",".join(token_counts)
     
-    # Embedding Çağrısı
     try:
+        # MODEL DEĞİŞİKLİĞİ: Daha stabil olan OpenAI embedding modelini kullanıyoruz
         response = client.embeddings.create(
-            model="nomic-ai/nomic-embed-text-v1.5",
+            model="openai/text-embedding-3-small", # Güncellendi!
             input=concatenated_tokens
         )
+        
+        # Gelen veri yapısını kontrol et
+        if not response.data:
+            raise ValueError("API'den boş yanıt döndü.")
+
         embedding_vector = response.data[0].embedding
         
         # Formatlama: {:.10f}
@@ -253,6 +282,7 @@ def generate_hash_from_embeddings(songs_json):
         
     except Exception as e:
         print(f"!! Embedding Hatası: {str(e)}")
+        # Hatanın detayını görmek için gerekirse e.response.json() yazdırılabilir
         return "ERROR"
 
 # --- MAIN ---
