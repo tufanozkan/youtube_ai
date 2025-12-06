@@ -64,10 +64,4 @@ venv/
 
 ---
 
-## Optional: PDF Screenshots
-
-You can take screenshots of the successful outputs in the terminal (JSON output and Hash output), paste them into a Word document, save it as `Tufan_Ozkan_Screenshots.pdf`, and add it to the project folder as proof that your code works correctly.
-
----
-
 **Last Updated**: December 6, 2025
