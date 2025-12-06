@@ -1,0 +1,5 @@
+apify-client
+openai
+tiktoken
+python-dotenv
+requests
