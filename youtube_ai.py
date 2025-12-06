@@ -11,17 +11,15 @@ from apify_client import ApifyClient
 from openai import OpenAI
 import tiktoken
 
-# 1. Çevresel Değişkenleri Yükle
+#enviroments
 load_dotenv()
 
-# 2. Sabitler (URL BURADA TEMİZ HALDE DURUYOR)
 GENIUS_SEARCH_URL = "https://genius.com/api/search/song"
 
-# 3. API Kurulumları
+#apis
 APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# İstemcileri Başlatma
 try:
     if not APIFY_TOKEN or not OPENROUTER_KEY:
         raise ValueError(".env dosyasında API anahtarları eksik!")
@@ -39,8 +37,8 @@ except Exception as e:
     print(f"Kurulum Hatası: {e}")
     sys.exit(1)
 
-# --- FONKSİYONLAR ---
 
+#functions
 def get_artist_from_youtube(video_url):
     """ Adım 1: YouTube URL'sinden sanatçı ismini bulur. """
     print(f"[*] YouTube videosu analiz ediliyor: {video_url}")
@@ -53,7 +51,7 @@ def get_artist_from_youtube(video_url):
     }
 
     try:
-        # Apify: Youtube Scraper
+        #apify youtube scraper
         run = apify_client.actor("streamers/youtube-scraper").call(run_input=run_input)
         
         if not run:
@@ -82,6 +80,7 @@ def get_artist_from_youtube(video_url):
         print(f"!! Apify YouTube Hatası: {str(e)}")
         sys.exit(1)
 
+#prompt engineering
 def get_first_album_songs(artist_name):
     """ Adım 2: LLM kullanarak sanatçının İLK albüm şarkılarını bulur. """
     print(f"[*] {artist_name} için ilk albüm bilgisi OpenRouter'dan isteniyor...")
@@ -133,17 +132,14 @@ def get_lyrics(song_list, artist_name):
     songs_with_lyrics_data = []
     found_count = 0
     
-    # Tarayıcı taklidi (Genius botları engellemesin diye)
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
     }
 
     for song in song_list:
         try:
-            # 1. Genius Arama API'sini kullan (URL sabitten alınıyor)
             params = {"q": f"{artist_name} {song}", "page": 1}
             
-            # İstek atılıyor
             resp = requests.get(GENIUS_SEARCH_URL, params=params, headers=headers, timeout=15)
             
             lyrics_text = ""
@@ -151,21 +147,17 @@ def get_lyrics(song_list, artist_name):
             if resp.status_code == 200:
                 data = resp.json()
                 
-                # Arama sonucu var mı?
                 if data.get("response", {}).get("sections", []) and data["response"]["sections"][0]["hits"]:
                     hit = data["response"]["sections"][0]["hits"][0]
                     song_url = hit["result"]["url"]
                     
-                    # 2. Şarkı sayfasına git
                     page_resp = requests.get(song_url, headers=headers, timeout=15)
                     soup = BeautifulSoup(page_resp.text, "html.parser")
                     
-                    # Lyrics containerlarını bul
                     lyrics_containers = soup.find_all("div", {"data-lyrics-container": "true"})
                     
                     if lyrics_containers:
                         for container in lyrics_containers:
-                            # <br> -> \n değişimi
                             for br in container.find_all("br"):
                                 br.replace_with("\n")
                             lyrics_text += container.get_text(separator="\n")
@@ -184,7 +176,7 @@ def get_lyrics(song_list, artist_name):
                 "lyrics": lyrics_text
             })
             
-            # Kısa mola (Rate limit yememek için)
+            #rate limit
             time.sleep(0.5)
 
         except Exception as e:
@@ -261,31 +253,25 @@ def generate_hash_from_embeddings(songs_json):
     concatenated_tokens = ",".join(token_counts)
     
     try:
-        # MODEL DEĞİŞİKLİĞİ: Daha stabil olan OpenAI embedding modelini kullanıyoruz
         response = client.embeddings.create(
-            model="openai/text-embedding-3-small", # Güncellendi!
+            model="openai/text-embedding-3-small",
             input=concatenated_tokens
         )
         
-        # Gelen veri yapısını kontrol et
         if not response.data:
             raise ValueError("API'den boş yanıt döndü.")
 
         embedding_vector = response.data[0].embedding
         
-        # Formatlama: {:.10f}
         formatted_vector = ",".join([f"{x:.10f}" for x in embedding_vector])
         
-        # MD5 Hash
         final_hash = hashlib.md5(formatted_vector.encode("utf-8")).hexdigest()
         return final_hash
         
     except Exception as e:
         print(f"!! Embedding Hatası: {str(e)}")
-        # Hatanın detayını görmek için gerekirse e.response.json() yazdırılabilir
         return "ERROR"
 
-# --- MAIN ---
 
 def main():
     parser = argparse.ArgumentParser()
@@ -294,21 +280,21 @@ def main():
     args = parser.parse_args()
     
     try:
-        # Adım 1
+        #step 1
         artist = get_artist_from_youtube(args.url)
         
-        # Adım 2
+        #step 2
         album_data = get_first_album_songs(artist)
         if not album_data["songs"]:
             raise ValueError("Şarkı listesi alınamadı.")
             
-        # Adım 3
+        #step 3
         songs_with_lyrics = get_lyrics(album_data["songs"], artist)
         
-        # Adım 4
+        #step 4
         final_json = analyze_lyrics_and_format(songs_with_lyrics, artist, album_data["album"])
         
-        # Çıktı Modu
+        #output mode
         if args.mode == "json":
             print(json.dumps(final_json, indent=2, ensure_ascii=False))
         elif args.mode == "hash":
