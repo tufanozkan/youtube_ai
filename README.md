@@ -1,130 +1,72 @@
-# YouTube AI - Song Information Analysis Tool
+# YouTube AI Scraping Agent
 
-An AI-powered Python application that automatically extracts artist information from YouTube videos and retrieves song details using the Genius API.
+This project is an artificial intelligence agent that extracts the artist name from a given YouTube video URL, uses LLM to find their first album, retrieves song lyrics from Genius, and performs token analysis to generate a hash.
 
-## 🎯 Features
+## Author
 
-- **YouTube Video Analysis**: Extract title and description information from YouTube videos
-- **Artist Information Extraction**: Automatically identify artist names using OpenAI/OpenRouter API
-- **Song Details**: Retrieve song lyrics and metadata from Genius.com API
-- **Smart Token Management**: Token calculation and management for OpenRouter API usage
-- **Error Handling**: Comprehensive error management and validation
+Tufan Özkan
 
-## 📋 Requirements
+## Installation
 
-- Python 3.8+
-- Apify API Token
-- OpenRouter API Key
-- Internet Connection
+1. Clone the repository:
 
-## 🚀 Installation
+   ```bash
+   git clone https://github.com/tufanozkan/youtube_ai.git
+   cd youtube_ai
+   ```
 
-### 1. Clone the Repository
+2. Install the required libraries:
 
-```bash
-git clone https://github.com/tufanozkan/youtube_ai.git
-cd youtube_ai
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### 2. Create Virtual Environment
+3. Create a `.env` file: Create a file named `.env` in the main directory and add your API keys:
+   ```
+   APIFY_API_TOKEN=your_apify_token
+   OPENROUTER_API_KEY=your_openrouter_key
+   ```
 
-```bash
-python3 -m venv venv
-source venv/bin/activate  # macOS/Linux
-# or
-venv\Scripts\activate  # Windows
-```
+## Usage
 
-### 3. Install Required Packages
+The script runs in two different modes: JSON output and Hash output.
+
+### 1. JSON Mode (Step 5 Output)
+
+Prints song analysis and metrics in JSON format.
 
 ```bash
-pip install -r requirements.txt
+python3 Cem_Dilmegani_YouTube_AI.py "https://www.youtube.com/watch?v=rSaC-YbSDpo" json
 ```
 
-### 4. Create .env File
+### 2. Hash Mode (Step 8 Output)
 
-Create a `.env` file in the project root directory and add your API keys:
-
-```env
-APIFY_API_TOKEN=your_apify_token_here
-OPENROUTER_API_KEY=your_openrouter_key_here
-```
-
-**How to Get API Keys:**
-
-- **Apify Token**: From [Apify Dashboard](https://console.apify.com)
-- **OpenRouter API Key**: From [OpenRouter Platform](https://openrouter.ai)
-
-## 💻 Usage
-
-### Running from Command Line
+Prints the MD5 hash of the embedding vector.
 
 ```bash
-python Cem_Dilmegani_YouTube_AI.py --url "YouTube Video URL"
+python3 Cem_Dilmegani_YouTube_AI.py "https://www.youtube.com/watch?v=rSaC-YbSDpo" hash
 ```
 
-### Example Usage
+---
 
-```bash
-python Cem_Dilmegani_YouTube_AI.py --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+## Security Note - `.gitignore`
+
+⚠️ **CRITICAL STEP!** If you push API keys to GitHub, you will be disqualified.
+
+Make sure your project folder has a `.gitignore` file and contains the following:
+
+```text
+.env
+__pycache__/
+.DS_Store
+venv/
 ```
 
-## 📦 Dependencies
+---
 
-| Package        | Version | Description                  |
-| -------------- | ------- | ---------------------------- |
-| apify-client   | Latest  | Apify API client             |
-| openai         | Latest  | OpenAI/OpenRouter API client |
-| tiktoken       | Latest  | OpenAI token counter         |
-| python-dotenv  | Latest  | .env file management         |
-| requests       | Latest  | HTTP requests                |
-| beautifulsoup4 | Latest  | HTML/XML parsing             |
+## Optional: PDF Screenshots
 
-## 🔄 Workflow
-
-1. **YouTube Analysis**: Extract title and description information from YouTube videos using Apify
-2. **AI Processing**: Identify artist names using OpenRouter API
-3. **Song Search**: Retrieve song information using Genius API
-4. **Results**: Return artist and song information
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-- `APIFY_API_TOKEN`: Required for Apify API access
-- `OPENROUTER_API_KEY`: Required for OpenRouter API access
-
-## 🐛 Troubleshooting
-
-### "API keys missing" Error
-
-Make sure the `.env` file is in the project root directory and contains all required API keys.
-
-### Rate Limiting
-
-The Genius API applies rate limiting. Add delays between multiple requests.
-
-## 📝 License
-
-This project is open source. See the LICENSE file for details.
-
-## 👨‍💻 Developer
-
-- **Tufan Özkan** - [GitHub](https://github.com/tufanozkan)
-
-## 🙏 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📞 Contact & Support
-
-For questions or suggestions, please open a [GitHub Issue](https://github.com/tufanozkan/youtube_ai/issues).
+You can take screenshots of the successful outputs in the terminal (JSON output and Hash output), paste them into a Word document, save it as `Tufan_Ozkan_Screenshots.pdf`, and add it to the project folder as proof that your code works correctly.
 
 ---
 
